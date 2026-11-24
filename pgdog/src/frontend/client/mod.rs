@@ -565,7 +565,6 @@ impl Client {
         let mut offline = shutdown.is_cancelled();
         let mut shutdown_signal = pin!(shutdown.cancelled());
 
-        let mut cluster_reloads = query_engine.cluster_reloads();
         let mut admin_termination = pin!(query_engine.cancellation_token().cancelled_owned());
 
         loop {
@@ -577,11 +576,6 @@ impl Client {
                     .send_flush(&ErrorResponse::shutting_down())
                     .await?;
                 break;
-            }
-
-            if query_engine.cluster_reloads() != cluster_reloads {
-                cluster_reloads = query_engine.cluster_reloads();
-                admin_termination.set(query_engine.cancellation_token().cancelled_owned());
             }
 
             let client_state = query_engine.client_state();

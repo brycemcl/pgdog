@@ -115,13 +115,9 @@ impl QueryEngine {
         Self::new(&client.params, &client.comms, client.admin)
     }
 
-    /// Token cancelled when an admin terminates this client's cluster (FORCE_RELOAD).
+    /// Token cancelled by an admin FORCE_RELOAD.
     pub(crate) fn cancellation_token(&self) -> CancellationToken {
         self.backend.cancellation_token()
-    }
-
-    pub(crate) fn cluster_reloads(&self) -> usize {
-        self.backend.cluster_reloads()
     }
 
     /// Wait for an async message from the backend.

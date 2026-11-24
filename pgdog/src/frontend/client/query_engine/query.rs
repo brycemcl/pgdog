@@ -97,7 +97,7 @@ impl QueryEngine {
             ) => {
                 result
             }
-            // If the cluster's cancellation token triggers, exit early. Currently used for admin FORCE_RELOAD.
+            // If the frontend cancellation token triggers, exit early. Currently used for admin FORCE_RELOAD.
             // If this returns an Error, it'll be propagated up to Client's Box::pin(self.run())
             // which will disconnect the client (and QueryEngine transactions)
             _ = cancellation_token.cancelled() => {

@@ -544,13 +544,9 @@ impl Connection {
         Ok(())
     }
 
-    /// Token cancelled when an admin terminates this connection's `Cluster`.
+    /// Token cancelled by an admin FORCE_RELOAD.
     pub(crate) fn cancellation_token(&self) -> CancellationToken {
         self.cluster.query_cancellation_token()
-    }
-
-    pub(crate) fn cluster_reloads(&self) -> usize {
-        self.cluster.reloads()
     }
 
     /// Get cluster if any.
