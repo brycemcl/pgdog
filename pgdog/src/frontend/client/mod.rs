@@ -644,20 +644,26 @@ impl Client {
     ///
     /// * `query_engine`: Query engine to set the client state into `waiting`.
     ///
-    async fn check_maintenance_mode(&self, query_engine: &mut QueryEngine) {
+    async fn check_maintenance_mode(&self, query_engine: &mut QueryEngine) -> Result<(), Error> {
         if !self.in_transaction()
             && !self.admin
             && let Some(waiter) = maintenance_mode::waiter(&self.database)
         {
+            let cancellation = query_engine.cancellation_token();
             let _guard = query_engine.set_maintenance_mode();
-            waiter.await;
+            select! {
+                biased;
+                _ = cancellation.cancelled() => return Err(Error::AdminTermination),
+                _ = waiter => {}
+            }
         }
+        Ok(())
     }
 
     /// Handle client messages.
     async fn client_messages(&mut self, query_engine: &mut QueryEngine) -> Result<(), Error> {
         use query_engine::{Pipeline, QueryEngineContext, QueryEngineResult};
-        self.check_maintenance_mode(query_engine).await;
+        self.check_maintenance_mode(query_engine).await?;
 
         let (mut context, client_request) = QueryEngineContext::new(self);
         match query_engine.handle(&mut context, client_request).await? {

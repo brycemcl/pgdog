@@ -141,6 +141,10 @@ impl QueryEngine {
         context: &mut QueryEngineContext<'_>,
         client_request: &mut ClientRequest,
     ) -> Result<QueryEngineResult, Error> {
+        if self.cancellation_token().is_cancelled() {
+            return Err(Error::AdminTermination);
+        }
+
         if let Some(result) = Self::check_extended_pipeline_rewrite(client_request)? {
             return Ok(result);
         }
