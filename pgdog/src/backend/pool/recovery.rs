@@ -261,9 +261,12 @@ mod test {
             .await?;
         guard
             .send(
-                &Query::new(format!(
-                    "START_REPLICATION SLOT {name} LOGICAL 0/0 (proto_version '1', publication_names '{name}')"
-                ))
+                &vec![
+                    Query::new(format!(
+                        "START_REPLICATION SLOT {name} LOGICAL 0/0 (proto_version '1', publication_names '{name}')"
+                    ))
+                    .into(),
+                ]
                 .into(),
             )
             .await?;
