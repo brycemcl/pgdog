@@ -120,6 +120,23 @@ impl QueryEngine {
         self.backend.cancellation_token()
     }
 
+    pub(crate) fn can_rebind_after_force_reload(&self) -> bool {
+        self.backend.can_rebind_after_force_reload()
+    }
+
+    /// Keep frontends that own no transaction or server on a current route.
+    pub(crate) async fn rebind_after_force_reload(
+        &mut self,
+        in_transaction: bool,
+    ) -> Result<(), Error> {
+        if in_transaction || !self.can_rebind_after_force_reload() {
+            return Err(Error::AdminTermination);
+        }
+        self.backend.rebind_after_force_reload().await?;
+        self.router.reset();
+        Ok(())
+    }
+
     /// Wait for an async message from the backend.
     pub(crate) async fn read_backend(&mut self) -> Result<Message, Error> {
         Ok(self.backend.read().await?)

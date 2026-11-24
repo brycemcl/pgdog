@@ -71,7 +71,7 @@ impl Connection {
         };
 
         if !admin {
-            conn.cluster.reload()?;
+            conn.cluster.reload(false)?;
         }
 
         Ok(conn)
@@ -448,7 +448,17 @@ impl Connection {
             return Ok(());
         }
 
-        self.cluster.safe_reload().await
+        self.cluster.safe_reload(false).await
+    }
+
+    /// A frontend can take the new generation only without backend state.
+    pub(crate) fn can_rebind_after_force_reload(&self) -> bool {
+        matches!(self.binding, Binding::NotConnected) && !self.pub_sub.is_listening()
+    }
+
+    /// Adopt the new route and cancellation token together.
+    pub(crate) async fn rebind_after_force_reload(&mut self) -> Result<(), Error> {
+        self.cluster.safe_reload(true).await
     }
 
     pub(crate) fn bind(&mut self, bind: &Bind) {

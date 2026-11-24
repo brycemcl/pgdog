@@ -28,7 +28,7 @@ pub(crate) struct ClusterConnection {
     // Cluster smart pointer.
     // Swapped at reload time, hence optional.
     cluster: Option<Cluster>,
-    // Bound to this frontend for its lifetime and cancelled by FORCE_RELOAD.
+    // Retained across ordinary reloads and renewed only at a safe boundary.
     query_cancellation: CancellationToken,
     // Traffic mirrors.
     mirrors: Vec<MirrorHandler>,
@@ -63,21 +63,21 @@ impl ClusterConnection {
 
     /// Perform an atomic and safe reload of the cluster config. This is needed
     /// because the global which holds the clusters is not atomically updated.
-    pub(super) async fn safe_reload(&mut self) -> Result<(), Error> {
+    pub(super) async fn safe_reload(&mut self, renew_token: bool) -> Result<(), Error> {
         if let Some(wait) = reload_notify::ready() {
             wait.await;
         }
 
-        self.reload()
+        self.reload(renew_token)
     }
 
     /// Reload connection state.
-    pub(super) fn reload(&mut self) -> Result<(), Error> {
+    pub(super) fn reload(&mut self, renew_token: bool) -> Result<(), Error> {
         self.init_passthrough_auth()?;
 
         let databases = databases::databases();
         let cluster = databases.cluster(self.identity())?;
-        if self.cluster.is_none() {
+        if renew_token || self.cluster.is_none() {
             self.query_cancellation = databases.connection_token();
         }
         self.cluster = Some(cluster);
@@ -155,7 +155,7 @@ impl ClusterConnection {
                         self.cluster()?.identifier()
                     );
 
-                    self.safe_reload().await?;
+                    self.safe_reload(false).await?;
                 }
                 Err(err) => return Err(err),
             }

@@ -565,8 +565,6 @@ impl Client {
         let mut offline = shutdown.is_cancelled();
         let mut shutdown_signal = pin!(shutdown.cancelled());
 
-        let mut admin_termination = pin!(query_engine.cancellation_token().cancelled_owned());
-
         loop {
             // If query engine is idle and we requested shutdown, we're done.
             // Admin clients stay connected, so admin commands work during shutdown.
@@ -579,17 +577,15 @@ impl Client {
             }
 
             let client_state = query_engine.client_state();
+            let admin_termination = query_engine.cancellation_token().cancelled_owned();
 
             select! {
                 _ = &mut shutdown_signal, if !offline => {
                     offline = true;
                 }
 
-                // If any of the `CancellationTokens `trigger, exit early. Currently used for admin `FORCE_RELOAD`.
-                // If this returns an Error, it'll be propagated up to `Client`'s [`Box::pin(self.run())`]
-                // which will disconnect the `Client` (and `QueryEngine` transactions)
-                _ = &mut admin_termination => {
-                    return Err(Error::AdminTermination);
+                _ = admin_termination => {
+                    query_engine.rebind_after_force_reload(self.in_transaction()).await?;
                 }
 
                 // Async messages.
@@ -650,10 +646,11 @@ impl Client {
             && let Some(waiter) = maintenance_mode::waiter(&self.database)
         {
             let cancellation = query_engine.cancellation_token();
+            let interrupt = !query_engine.can_rebind_after_force_reload();
             let _guard = query_engine.set_maintenance_mode();
             select! {
                 biased;
-                _ = cancellation.cancelled() => return Err(Error::AdminTermination),
+                _ = cancellation.cancelled(), if interrupt => return Err(Error::AdminTermination),
                 _ = waiter => {}
             }
         }
@@ -663,7 +660,15 @@ impl Client {
     /// Handle client messages.
     async fn client_messages(&mut self, query_engine: &mut QueryEngine) -> Result<(), Error> {
         use query_engine::{Pipeline, QueryEngineContext, QueryEngineResult};
-        self.check_maintenance_mode(query_engine).await?;
+        loop {
+            self.check_maintenance_mode(query_engine).await?;
+            if !query_engine.cancellation_token().is_cancelled() {
+                break;
+            }
+            query_engine
+                .rebind_after_force_reload(self.in_transaction())
+                .await?;
+        }
 
         let (mut context, client_request) = QueryEngineContext::new(self);
         match query_engine.handle(&mut context, client_request).await? {

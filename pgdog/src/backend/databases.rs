@@ -87,12 +87,11 @@ pub(crate) fn replace_databases(
         old_databases.move_conns_to(&new_databases)?;
     }
 
-    // Plain replacements share the cancellation token with every preceding
-    // pool set since the last FORCE_RELOAD. Existing frontends retain it even
-    // if they never reattach to a new pool.
-    if matches!(replacement, PoolReplacement::ForceReload) {
+    // Plain replacements share the token with retired pool sets. Frontends
+    // with backend work keep that token until the work ends.
+    let force = matches!(replacement, PoolReplacement::ForceReload);
+    if force {
         old_databases.all().values().for_each(Cluster::set_offline);
-        old_databases.force_reload.cancel();
         new_databases.force_reload = CancellationToken::new();
     } else {
         new_databases.force_reload = old_databases.force_reload.clone();
@@ -102,6 +101,11 @@ pub(crate) fn replace_databases(
     // 3. Launch new databases first.
     new_databases.launch();
     DATABASES.store(new_databases);
+    if force {
+        // Idle frontends rebind when they observe this cancellation. Publish
+        // the new generation first so they cannot rebind to retired pools.
+        old_databases.force_reload.cancel();
+    }
     // 4. Shutdown all databases.
     old_databases.shutdown();
 
